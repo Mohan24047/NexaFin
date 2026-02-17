@@ -136,7 +136,7 @@ export const ScenarioComparison = () => {
                                         borderRadius: '8px',
                                         color: '#f3f4f6',
                                     }}
-                                    formatter={(value: number) => ['$' + value.toLocaleString(), '']}
+                                    formatter={(value: number | undefined) => ['$' + (value ?? 0).toLocaleString(), '']}
                                     labelFormatter={(label) => `Year ${label}`}
                                 />
                                 <Legend

@@ -23,6 +23,21 @@ import { calculateFundability } from '@/lib/fundability';
 import { Briefcase } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@/lib/toastStore';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { useAuth } from '@/context/AuthContext';
+
+interface Startup {
+    id: string;
+    name: string;
+    description?: string;
+    created_at: string;
+    revenue: number;
+    burn: number;
+    cash: number;
+    team: number;
+    runway: number;
+    survival_score: number;
+}
 
 const defaultStressControls: StressTestControls = {
     recession: false,
@@ -38,7 +53,8 @@ const defaultFounderControls: FounderControls = {
 };
 
 export default function Home() {
-    const [startupIdea, setStartupIdea] = useState<string | null>(null);
+    const [startupIdea, setStartupIdea] = useState<string | null>(null); // This is the description/prompt
+    const [startupName, setStartupName] = useState<string | null>(null); // This is the Title
     const [baseFinancialData, setBaseFinancialData] = useState<FinancialData | null>(null);
     const [stressControls, setStressControls] = useState<StressTestControls>(defaultStressControls);
     const [founderControls, setFounderControls] = useState<FounderControls>(defaultFounderControls);
@@ -53,6 +69,78 @@ export default function Home() {
     const [thesis, setThesis] = useState<any>(null);
     const [generatingThesis, setGeneratingThesis] = useState(false);
     const [isAdded, setIsAdded] = useState(false);
+
+    // My Startups State
+    const { user } = useAuth();
+    const [myStartups, setMyStartups] = useState<Startup[]>([]);
+    const [myStartupsLoading, setMyStartupsLoading] = useState(true);
+
+    const fetchMyStartups = useCallback(async () => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        setMyStartupsLoading(true);
+        try {
+            // Adjust port if needed, assuming backend is on 8000
+            const res = await fetch('http://localhost:8000/startups/my', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMyStartups(data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch startups", error);
+        } finally {
+            setMyStartupsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchMyStartups();
+    }, [fetchMyStartups]);
+
+    const [savedStartupId, setSavedStartupId] = useState<string | null>(null);
+
+    const saveStartupToBackend = async (data: FinancialData, name: string) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+            const res = await fetch('http://localhost:8000/startups/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    name,
+                    description: "Generated via SimBuild",
+                    revenue: data.revenue,
+                    burn: data.burn,
+                    cash: data.cash,
+                    growth: data.growth,
+                    team: data.team,
+                    runway: data.runway,
+                    survival_score: data.survivalScore,
+                }),
+            });
+
+            if (res.ok) {
+                const savedStartup = await res.json();
+                console.log("Startup Saved with ID:", savedStartup.id);
+                setSavedStartupId(savedStartup.id);
+                // Refresh list
+                fetchMyStartups();
+            }
+        } catch (e) {
+            console.error("Failed to save startup", e);
+        }
+    };
+
+
+
+    // ...
+
+
 
     // ── Layer 1: Founder controls applied to AI base data ─────────
     const founderAdjusted: FinancialData | null = useMemo(() => {
@@ -115,10 +203,14 @@ export default function Home() {
     );
 
     // ── Generate handler ──────────────────────────────────────────
-    const handleGenerate = async (idea: string) => {
-        setStartupIdea(idea);
+    // ── Generate handler ──────────────────────────────────────────
+    const handleGenerate = async (idea: string, title: string) => {
+        setStartupIdea(idea); // We can stick with idea for description/thesis gen context
+        // But for saving, we'll use 'title'
+
         setLoading(true);
         setAdvice(null);
+        setSavedStartupId(null); // Clear previous ID
         const resetStress = { ...defaultStressControls };
         const resetFounder = { ...defaultFounderControls };
         setStressControls(resetStress);
@@ -156,6 +248,11 @@ export default function Home() {
 
             const baseAdj = calculateStressTest(data, resetStress);
             fetchAdvice(idea, data, baseAdj, resetStress);
+
+            // Save to Backend immediately with the provided TITLE
+            console.log("Saving startup with title:", title);
+            saveStartupToBackend(data, title);
+
         } catch {
             const fallback: FinancialData = {
                 revenue: 25000,
@@ -190,8 +287,23 @@ export default function Home() {
             if (adviceTimerRef.current) clearTimeout(adviceTimerRef.current);
         };
     }, [stressControls, founderControls, startupIdea, founderAdjusted, adjusted, fetchAdvice]);
+    // ── helpers ───────────────────────────────────────────────────
+    const providerLabel = (p: string) => {
+        switch (p) {
+            case 'openrouter': return '🟢 OpenRouter AI';
+            case 'groq': return '🟡 Groq AI (fallback)';
+            case 'fallback': return '🔴 Mock data (offline)';
+            default: return p;
+        }
+    };
 
-    // ── Helpers ───────────────────────────────────────────────────
+    const contextLabel = () => {
+        if (isStressed && isFounderModified) return 'After founder + market simulation';
+        if (isStressed) return 'Under stress scenario';
+        if (isFounderModified) return 'After founder adjustments';
+        return 'Based on AI-generated model';
+    };
+
     const isStressed =
         stressControls.recession ||
         stressControls.adCostIncrease > 0 ||
@@ -249,12 +361,17 @@ export default function Home() {
     const { addToast } = useToast();
 
     const handleAddToPortfolio = () => {
-        if (!thesis || !startupIdea) return;
+        if (!thesis || !startupName) return; // Use Name (Title) check
         const fundability = adjusted ? calculateFundability({ runwayMonths: adjusted.adjustedRunway, monthlyBurn: adjusted.adjustedBurn, survivalScore: adjusted.adjustedSurvivalScore }) : 50;
+
+        // Use the actual backend ID if available, otherwise fallback
+        const finalId = savedStartupId || uuidv4();
+        console.log("Adding to Portfolio with ID:", finalId);
+
         addInvestment({
-            id: uuidv4(),
-            startupName: startupIdea,
-            ticker: startupIdea.substring(0, 4).toUpperCase(),
+            id: finalId,
+            startupName: startupName, // Use Title
+            ticker: startupName.substring(0, 4).toUpperCase(),
             valuation: thesis.valuation,
             askAmount: thesis.askAmount,
             equity: thesis.equity,
@@ -276,223 +393,288 @@ export default function Home() {
         return 'from-red-500/20 to-red-500/5 border-red-500/30';
     };
 
-    const providerLabel = (p: string) => {
-        switch (p) {
-            case 'openrouter': return '🟢 OpenRouter AI';
-            case 'groq': return '🟡 Groq AI (fallback)';
-            case 'fallback': return '🔴 Mock data (offline)';
-            default: return p;
-        }
-    };
-
-    const contextLabel = () => {
-        if (isStressed && isFounderModified) return 'After founder + market simulation';
-        if (isStressed) return 'Under stress scenario';
-        if (isFounderModified) return 'After founder adjustments';
-        return 'Based on AI-generated model';
+    const handleTrackExisting = (startup: Startup) => {
+        // Quick check to see if already added (optional)
+        // For now, just add it.
+        addInvestment({
+            id: startup.id,
+            startupName: startup.name,
+            ticker: startup.name.substring(0, 4).toUpperCase(),
+            valuation: 1000000, // Default valuation for existing items without full thesis
+            askAmount: 100000,  // Default ask
+            equity: 10,
+            shares: 1000,
+            costBasis: 0,
+            thesisSummary: `Added from history. Created on ${new Date(startup.created_at).toLocaleDateString()}`,
+            fundabilityScore: startup.survival_score,
+            risk: "Medium",
+            roi: "Unknown",
+            dateAdded: new Date().toISOString()
+        });
+        addToast(`Added "${startup.name}" to Portfolio`, "success");
     };
 
     return (
-        <main className="min-h-screen bg-gray-900 text-white py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-7xl mx-auto">
-                <Header />
+        <ProtectedRoute>
+            <main className="min-h-screen bg-gray-900 text-white py-12 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-7xl mx-auto">
+                    <Header />
 
-                <div className="mb-16">
-                    <InputSection onGenerate={handleGenerate} isLoading={loading} />
-                </div>
-
-                {/* Loading spinner */}
-                {loading && (
-                    <div className="text-center py-16">
-                        <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-                        <p className="text-gray-300 mt-4 text-base font-medium">Generating financial model...</p>
-                        <p className="text-gray-500 mt-1 text-sm">Analyzing market conditions</p>
+                    <div className="mb-16">
+                        <InputSection onGenerate={handleGenerate} isLoading={loading} />
                     </div>
-                )}
 
-                {!loading && startupIdea && baseFinancialData && founderAdjusted && adjusted && (
-                    <>
-                        <div className="text-center mb-8">
-                            <p className="text-gray-400 text-sm">
-                                Showing results for:{' '}
-                                <span className="text-blue-400 font-medium">&ldquo;{startupIdea}&rdquo;</span>
-                            </p>
-                            {provider && (
-                                <p className="text-gray-500 text-xs mt-1">
-                                    Powered by: {providerLabel(provider)}
-                                </p>
-                            )}
-                        </div>
-
-                        {/* ═══ SURVIVAL SCORE — HERO ELEMENT ═══ */}
-                        <div className={`mb-8 rounded-2xl border bg-gradient-to-br ${scoreBg(adjusted.adjustedSurvivalScore)} p-8 text-center transition-all duration-500`}>
-                            <p className="text-gray-400 text-sm uppercase tracking-widest mb-2">Survival</p>
-                            <p className={`text-8xl font-black tabular-nums transition-all duration-500 ${scoreColor(adjusted.adjustedSurvivalScore)}`}>
-                                {adjusted.adjustedSurvivalScore}%
-                            </p>
-                            <p className="text-gray-500 text-sm mt-3">{contextLabel()}</p>
-                            {adjusted.adjustedSurvivalScore !== baseFinancialData.survivalScore && (
-                                <p className="text-gray-600 text-xs mt-1">
-                                    AI base: {baseFinancialData.survivalScore}%
-                                </p>
-                            )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                            {/* Business Model Card */}
-                            <ResultCard title="Business Model">
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
-                                        <span className="text-gray-400">Monthly Revenue</span>
-                                        <span className="text-lg font-semibold text-emerald-400">
-                                            {fmt(baseFinancialData.revenue)}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
-                                        <span className="text-gray-400">Monthly Burn</span>
-                                        <div className="text-right">
-                                            <span
-                                                className={`text-lg font-semibold transition-colors duration-300 ${isStressed || isFounderModified ? 'text-orange-400' : 'text-red-400'
-                                                    }`}
-                                            >
-                                                {fmt(adjusted.adjustedBurn)}
-                                            </span>
-                                            {(isStressed || isFounderModified) && (
-                                                <span className="block text-xs text-gray-500 line-through">
-                                                    {fmt(baseFinancialData.burn)}
-                                                </span>
-                                            )}
+                    {/* My Created Startups Section */}
+                    <div className="mb-16">
+                        <h2 className="text-2xl font-bold text-white mb-6">My Created Startups</h2>
+                        {myStartupsLoading ? (
+                            <div className="text-gray-400">Loading startups...</div>
+                        ) : myStartups.length === 0 ? (
+                            <div className="text-gray-500 italic border border-gray-800 rounded-xl p-8 text-center bg-gray-900/50">
+                                No startups created yet. Launch a simulation to get started.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {myStartups.map((startup) => (
+                                    <div key={startup.id} className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 hover:border-blue-500/50 transition-colors flex flex-col h-full">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h3 className="font-bold text-lg text-white mb-1">{startup.name}</h3>
+                                                <p className="text-xs text-gray-500">
+                                                    Created: {new Date(startup.created_at).toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                            <div className={`px-2 py-1 rounded text-xs font-medium ${startup.survival_score >= 70 ? 'bg-emerald-500/20 text-emerald-400' :
+                                                startup.survival_score >= 40 ? 'bg-yellow-500/20 text-yellow-400' :
+                                                    'bg-red-500/20 text-red-400'
+                                                }`}>
+                                                Score: {startup.survival_score}
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
-                                        <span className="text-gray-400">Growth Rate</span>
-                                        <div className="text-right">
-                                            <span
-                                                className={`text-lg font-semibold transition-colors duration-300 ${adjusted.adjustedGrowth !== baseFinancialData.growth
-                                                    ? adjusted.adjustedGrowth > baseFinancialData.growth
-                                                        ? 'text-emerald-400'
-                                                        : 'text-yellow-400'
-                                                    : 'text-blue-400'
-                                                    }`}
-                                            >
-                                                {adjusted.adjustedGrowth}%
-                                            </span>
-                                            {adjusted.adjustedGrowth !== baseFinancialData.growth && (
-                                                <span className="block text-xs text-gray-500 line-through">
-                                                    {baseFinancialData.growth}%
-                                                </span>
-                                            )}
+
+                                        <div className="space-y-2 text-sm text-gray-400 mb-4 flex-grow">
+                                            <div className="flex justify-between">
+                                                <span>Revenue</span>
+                                                <span className="text-white">${startup.revenue.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Burn</span>
+                                                <span className="text-white">${startup.burn.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span>Runway</span>
+                                                <span className="text-white">{startup.runway} mo</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
-                                        <span className="text-gray-400">Team Size</span>
-                                        <span className="text-lg font-semibold text-white">
-                                            {founderAdjusted.team + stressControls.hiringExpansion} people
-                                            {(founderControls.plannedHires > 0 || stressControls.hiringExpansion > 0) && (
-                                                <span className="text-xs text-purple-400 ml-1">
-                                                    (+{founderControls.plannedHires + stressControls.hiringExpansion})
-                                                </span>
-                                            )}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center py-2">
-                                        <span className="text-gray-400">Cash in Bank</span>
-                                        <div className="text-right">
-                                            <span className="text-lg font-semibold text-emerald-400">
-                                                {fmt(founderAdjusted.cash)}
-                                            </span>
-                                            {founderControls.startingCapital !== null && (
-                                                <span className="block text-xs text-gray-500 line-through">
-                                                    {fmt(baseFinancialData.cash)}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </ResultCard>
 
-                            {/* Runway Card */}
-                            <ResultCard title="Runway">
-                                <div className="flex flex-col items-center justify-center h-full space-y-4 py-4">
-                                    <p className="text-7xl font-black text-white tabular-nums transition-all duration-500">
-                                        {adjusted.adjustedRunway}
-                                        <span className="text-2xl font-normal text-gray-400 ml-2">months</span>
-                                    </p>
-                                    {adjusted.adjustedRunway !== baseFinancialData.runway && (
-                                        <p className="text-xs text-gray-500">
-                                            AI base: {baseFinancialData.runway} months
-                                        </p>
-                                    )}
-                                    <p className="text-sm text-gray-500">
-                                        {isFounderModified && isStressed
-                                            ? 'Adjusted after founder controls + stress'
-                                            : isFounderModified
-                                                ? 'Adjusted after founder controls'
-                                                : isStressed
-                                                    ? 'Under stress scenario'
-                                                    : 'Based on current model'}
-                                    </p>
-                                </div>
-                            </ResultCard>
-                        </div>
-
-                        {/* Founder Controls */}
-                        <div className="mb-6">
-                            <FounderControlsPanel
-                                controls={founderControls}
-                                aiCash={baseFinancialData.cash}
-                                onChange={setFounderControls}
-                            />
-                        </div>
-
-                        {/* Stress Test */}
-                        <div className="mb-6">
-                            <StressTestPanel controls={stressControls} onChange={setStressControls} />
-                        </div>
-
-                        {/* AI CFO Advice */}
-                        <AdvicePanel
-                            advice={advice}
-                            loading={adviceLoading}
-                            loadingText="AI CFO analyzing scenario..."
-                        />
-
-                        {/* Investment Thesis Section */}
-                        {adjusted && (
-                            <div className="mt-8 pt-8 border-t border-gray-800">
-                                <div className="flex items-center justify-between mb-6">
-                                    <div>
-                                        <h2 className="text-2xl font-bold flex items-center gap-2">
-                                            <Briefcase className="w-6 h-6 text-emerald-400" />
-                                            Investment Analysis
-                                        </h2>
-                                        <p className="text-gray-400 text-sm">Validating for Portfolio Inclusion</p>
-                                    </div>
-                                    {!thesis && (
                                         <Button
-                                            onClick={handleGenerateThesis}
-                                            isLoading={generatingThesis}
+                                            size="sm"
                                             variant="secondary"
+                                            className="w-full mt-4"
+                                            onClick={() => handleTrackExisting(startup)}
                                         >
-                                            Generate Investment Thesis
+                                            <Briefcase className="w-4 h-4 mr-2" />
+                                            Track in Portfolio
                                         </Button>
-                                    )}
-                                </div>
-
-                                {thesis && (
-                                    <div className="max-w-md">
-                                        <InvestmentCard
-                                            data={thesis}
-                                            onAdd={handleAddToPortfolio}
-                                            isAdded={isAdded}
-                                        />
                                     </div>
-                                )}
+                                ))}
                             </div>
                         )}
-                    </>
-                )}
-            </div>
-        </main>
+                    </div>
+
+                    {/* Loading spinner */}
+                    {loading && (
+                        <div className="text-center py-16">
+                            <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+                            <p className="text-gray-300 mt-4 text-base font-medium">Generating financial model...</p>
+                            <p className="text-gray-500 mt-1 text-sm">Analyzing market conditions</p>
+                        </div>
+                    )}
+
+                    {!loading && startupName && baseFinancialData && founderAdjusted && adjusted && (
+                        <>
+                            <div className="text-center mb-8">
+                                <p className="text-gray-400 text-sm">
+                                    Showing results for:{' '}
+                                    <span className="text-blue-400 font-medium">&ldquo;{startupName}&rdquo;</span>
+                                </p>
+                                {provider && (
+                                    <p className="text-gray-500 text-xs mt-1">
+                                        Powered by: {providerLabel(provider)}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* ═══ SURVIVAL SCORE — HERO ELEMENT ═══ */}
+                            <div className={`mb-8 rounded-2xl border bg-gradient-to-br ${scoreBg(adjusted.adjustedSurvivalScore)} p-8 text-center transition-all duration-500`}>
+                                <p className="text-gray-400 text-sm uppercase tracking-widest mb-2">Survival</p>
+                                <p className={`text-8xl font-black tabular-nums transition-all duration-500 ${scoreColor(adjusted.adjustedSurvivalScore)}`}>
+                                    {adjusted.adjustedSurvivalScore}%
+                                </p>
+                                <p className="text-gray-500 text-sm mt-3">{contextLabel()}</p>
+                                {adjusted.adjustedSurvivalScore !== baseFinancialData.survivalScore && (
+                                    <p className="text-gray-600 text-xs mt-1">
+                                        AI base: {baseFinancialData.survivalScore}%
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                {/* Business Model Card */}
+                                <ResultCard title="Business Model">
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                                            <span className="text-gray-400">Monthly Revenue</span>
+                                            <span className="text-lg font-semibold text-emerald-400">
+                                                {fmt(baseFinancialData.revenue)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                                            <span className="text-gray-400">Monthly Burn</span>
+                                            <div className="text-right">
+                                                <span
+                                                    className={`text-lg font-semibold transition-colors duration-300 ${isStressed || isFounderModified ? 'text-orange-400' : 'text-red-400'
+                                                        }`}
+                                                >
+                                                    {fmt(adjusted.adjustedBurn)}
+                                                </span>
+                                                {(isStressed || isFounderModified) && (
+                                                    <span className="block text-xs text-gray-500 line-through">
+                                                        {fmt(baseFinancialData.burn)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                                            <span className="text-gray-400">Growth Rate</span>
+                                            <div className="text-right">
+                                                <span
+                                                    className={`text-lg font-semibold transition-colors duration-300 ${adjusted.adjustedGrowth !== baseFinancialData.growth
+                                                        ? adjusted.adjustedGrowth > baseFinancialData.growth
+                                                            ? 'text-emerald-400'
+                                                            : 'text-yellow-400'
+                                                        : 'text-blue-400'
+                                                        }`}
+                                                >
+                                                    {adjusted.adjustedGrowth}%
+                                                </span>
+                                                {adjusted.adjustedGrowth !== baseFinancialData.growth && (
+                                                    <span className="block text-xs text-gray-500 line-through">
+                                                        {baseFinancialData.growth}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                                            <span className="text-gray-400">Team Size</span>
+                                            <span className="text-lg font-semibold text-white">
+                                                {founderAdjusted.team + stressControls.hiringExpansion} people
+                                                {(founderControls.plannedHires > 0 || stressControls.hiringExpansion > 0) && (
+                                                    <span className="text-xs text-purple-400 ml-1">
+                                                        (+{founderControls.plannedHires + stressControls.hiringExpansion})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center py-2">
+                                            <span className="text-gray-400">Cash in Bank</span>
+                                            <div className="text-right">
+                                                <span className="text-lg font-semibold text-emerald-400">
+                                                    {fmt(founderAdjusted.cash)}
+                                                </span>
+                                                {founderControls.startingCapital !== null && (
+                                                    <span className="block text-xs text-gray-500 line-through">
+                                                        {fmt(baseFinancialData.cash)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </ResultCard>
+
+                                {/* Runway Card */}
+                                <ResultCard title="Runway">
+                                    <div className="flex flex-col items-center justify-center h-full space-y-4 py-4">
+                                        <p className="text-7xl font-black text-white tabular-nums transition-all duration-500">
+                                            {adjusted.adjustedRunway}
+                                            <span className="text-2xl font-normal text-gray-400 ml-2">months</span>
+                                        </p>
+                                        {adjusted.adjustedRunway !== baseFinancialData.runway && (
+                                            <p className="text-xs text-gray-500">
+                                                AI base: {baseFinancialData.runway} months
+                                            </p>
+                                        )}
+                                        <p className="text-sm text-gray-500">
+                                            {isFounderModified && isStressed
+                                                ? 'Adjusted after founder controls + stress'
+                                                : isFounderModified
+                                                    ? 'Adjusted after founder controls'
+                                                    : isStressed
+                                                        ? 'Under stress scenario'
+                                                        : 'Based on current model'}
+                                        </p>
+                                    </div>
+                                </ResultCard>
+                            </div>
+
+                            {/* Founder Controls */}
+                            <div className="mb-6">
+                                <FounderControlsPanel
+                                    controls={founderControls}
+                                    aiCash={baseFinancialData.cash}
+                                    onChange={setFounderControls}
+                                />
+                            </div>
+
+                            {/* Stress Test */}
+                            <div className="mb-6">
+                                <StressTestPanel controls={stressControls} onChange={setStressControls} />
+                            </div>
+
+                            {/* AI CFO Advice */}
+                            <AdvicePanel
+                                advice={advice}
+                                loading={adviceLoading}
+                                loadingText="AI CFO analyzing scenario..."
+                            />
+
+                            {/* Investment Thesis Section */}
+                            {adjusted && (
+                                <div className="mt-8 pt-8 border-t border-gray-800">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div>
+                                            <h2 className="text-2xl font-bold flex items-center gap-2">
+                                                <Briefcase className="w-6 h-6 text-emerald-400" />
+                                                Investment Analysis
+                                            </h2>
+                                            <p className="text-gray-400 text-sm">Validating for Portfolio Inclusion</p>
+                                        </div>
+                                        {!thesis && (
+                                            <Button
+                                                onClick={handleGenerateThesis}
+                                                isLoading={generatingThesis}
+                                                variant="secondary"
+                                            >
+                                                Generate Investment Thesis
+                                            </Button>
+                                        )}
+                                    </div>
+
+                                    {thesis && (
+                                        <div className="max-w-md">
+                                            <InvestmentCard
+                                                data={thesis}
+                                                onAdd={handleAddToPortfolio}
+                                                isAdded={isAdded}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            </main>
+        </ProtectedRoute>
     );
 }

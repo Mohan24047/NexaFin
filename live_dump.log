@@ -1,0 +1,34 @@
+--- Live Data Dump ---
+--- 1. Latest 5 Startups ---
+Startup: 'Startup A-2' (ID: f4447050-2a0f-4c51-9d38-280bd68046b1)
+   -> Owner Email: founder_a_3d5f14@example.com
+Startup: 'Startup A-1' (ID: df97ab3c-71bc-4712-99e8-2289d506bced)
+   -> Owner Email: founder_a_dba358@example.com
+Startup: 'Startup B-1' (ID: d5525fbf-f1dd-4841-be04-794a8c9ae257)
+   -> Owner Email: founder_b_ffc3fa@example.com
+Startup: 'Startup A-2' (ID: be17a3f4-a36f-4fec-a7ce-e28487fc25f5)
+   -> Owner Email: founder_a_c309fd@example.com
+Startup: 'Startup A-2' (ID: b82740de-140a-40f7-a4ab-de696e52d203)
+   -> Owner Email: founder_a_25a013@example.com
+
+--- 2. Latest 5 Requests (V2) ---
+Request: 'I want to invest'
+   -> Startup: 'Startup B-1' (ID: a61a4b19-c876-48d1-8bb7-157d7cfd10c7)
+   -> Assigned Owner: founder_b_8186df@example.com
+   -> Status: pending
+Request: 'I want to invest'
+   -> Startup: 'Startup A-1' (ID: 71d5b0a1-c932-4f2f-8dbe-d49ecf0d0351)
+   -> Assigned Owner: founder_a_6b7941@example.com
+   -> Status: pending
+Request: 'styfghj'
+   -> Startup: 'Unknown Startup' (ID: b6eb00cc-c25d-44bc-a7f0-0c4848d256c8)
+   -> Assigned Owner: 
+   -> Status: pending
+Request: 'I want to invest'
+   -> Startup: 'Startup B-1' (ID: 190cab58-b7d1-49ad-9c23-f6c1fb89f9d2)
+   -> Assigned Owner: founder_b_3a327f@example.com
+   -> Status: pending
+Request: 'I want to invest'
+   -> Startup: 'Startup A-1' (ID: b787a11d-a71f-4887-8f3b-479d9dfd356f)
+   -> Assigned Owner: founder_a_acac60@example.com
+   -> Status: pending

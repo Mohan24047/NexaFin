@@ -1,0 +1,22 @@
+--- Starting Test ---
+--- Testing Investor Request Isolation ---
+Investor: investor_198465@example.com
+Founder A: founder_a_6b7941@example.com
+Founder B: founder_b_8186df@example.com
+Created Startups: A1(71d5b0a1-c932-4f2f-8dbe-d49ecf0d0351), A2(b0665025-5570-4772-9f88-4832dc7c3db3), B1(a61a4b19-c876-48d1-8bb7-157d7cfd10c7)
+
+[ACTION] Sending request to Startup A-1...
+[DEBUG] Send Request Status: 200, Response: {"success":true,"message":"Request sent to startup dashboard"}
+[DEBUG] Get Requests Status: 200
+[DEBUG] Get Requests Status: 200
+Founder A Requests: 1 (Expected 1)
+Founder B Requests: 0 (Expected 0)
+
+[ACTION] Sending request to Startup B-1...
+[DEBUG] Send Request Status: 200, Response: {"success":true,"message":"Request sent to startup dashboard"}
+[DEBUG] Get Requests Status: 200
+[DEBUG] Get Requests Status: 200
+Founder A Requests: 1 (Expected 1)
+Founder B Requests: 1 (Expected 1)
+
+[SUCCESS] All isolation tests passed!

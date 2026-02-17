@@ -2,10 +2,12 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Menu, X, PieChart, TrendingUp, DollarSign, Users, Activity, Home } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Menu, X, PieChart, TrendingUp, DollarSign, Users, Activity, Home, LogOut } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { useAuth } from '@/context/AuthContext';
+import NotificationBell from '@/components/shared/NotificationBell';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -14,8 +16,28 @@ function cn(...inputs: ClassValue[]) {
 export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
     const pathname = usePathname();
+    const router = useRouter();
+    const { user, signOut } = useAuth();
 
-    const navItems = [
+    const handleLogout = async () => {
+        await signOut();
+        router.replace('/login');
+    };
+
+    // Don't show navbar on login page
+    if (pathname === '/login') return null;
+
+    if (user?.user_type === 'startup') {
+        // Filter out Portfolio and Tracker (Market Target)
+        const startupHidden = ['Portfolio', 'Tracker'];
+        // Remove hidden items from main list first (if they were there by default)
+        // or just construct a specific list. 
+        // Current list has Portfolio and Tracker by default. 
+        // We should filter them OUT.
+    }
+
+    // Better approach: Define base items, then filter.
+    let baseNavItems = [
         { name: 'Dashboard', href: '/', icon: Home },
         { name: 'Startup Builder', href: '/startup-builder', icon: Activity },
         { name: 'Portfolio', href: '/portfolio', icon: PieChart },
@@ -24,6 +46,14 @@ export default function Navbar() {
         { name: 'Finance', href: '/personal-finance', icon: Users },
         { name: 'AI Agents', href: '/agents', icon: Activity },
     ];
+
+    if (user?.user_type === 'startup') {
+        const hiddenForStartup = ['Portfolio', 'Tracker'];
+        baseNavItems = baseNavItems.filter(item => !hiddenForStartup.includes(item.name));
+        baseNavItems.push({ name: 'Investor Requests', href: '/startup/requests', icon: Users });
+    }
+
+    const navItems = baseNavItems;
 
     return (
         <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
@@ -77,6 +107,20 @@ export default function Navbar() {
                         </div>
                     </div>
 
+                    {/* Notification bell + Logout (desktop) */}
+                    {user && (
+                        <div className="hidden md:flex items-center gap-1">
+                            <NotificationBell />
+                            <button
+                                onClick={handleLogout}
+                                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
+                            >
+                                <LogOut className="w-4 h-4" />
+                                Logout
+                            </button>
+                        </div>
+                    )}
+
                     <div className="-mr-2 flex md:hidden">
                         <button
                             onClick={() => setIsOpen(!isOpen)}
@@ -112,6 +156,24 @@ export default function Navbar() {
                                 </Link>
                             );
                         })}
+                        {/* Notification bell + Logout (mobile) */}
+                        {user && (
+                            <>
+                                <div className="px-3 py-2">
+                                    <NotificationBell />
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setIsOpen(false);
+                                        handleLogout();
+                                    }}
+                                    className="w-full text-left block px-3 py-2 rounded-md text-base font-medium flex items-center gap-3 text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all"
+                                >
+                                    <LogOut className="w-5 h-5" />
+                                    Logout
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

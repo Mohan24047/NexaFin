@@ -1,15 +1,39 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import sys
+import os
+
+# Fix path to allow imports from backend root
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import yfinance as yf
 import pandas as pd
 
+from backend.db import models, database
+from backend.routers import auth, portfolio, finance, recommendations, invest, startup, notifications
+
+# Create Database Tables
+models.Base.metadata.create_all(bind=database.engine)
+
 app = FastAPI(title="GenFin Backend")
 
-# Allow CORS for Frontend
+# Include Auth Router (Force Reload)
+app.include_router(auth.router)
+app.include_router(finance.router)
+app.include_router(recommendations.router)
+app.include_router(portfolio.router)
+app.include_router(invest.router)
+app.include_router(startup.router)
+app.include_router(notifications.router)
+
+
+
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -20,5 +20,6 @@ echo Opening browser to http://localhost:3000 ...
 start http://localhost:3000
 
 echo Starting Next.js Development Server...
+call npm install
 npm run dev
 pause

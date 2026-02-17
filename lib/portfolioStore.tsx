@@ -53,16 +53,47 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem('genfin_portfolio');
-            const storedGen = localStorage.getItem('genfin_generated_portfolio');
-            if (stored) setInvestments(JSON.parse(stored));
-            if (storedGen) setGeneratedPortfolio(JSON.parse(storedGen));
-        } catch (e) {
-            console.error('Failed to load portfolio', e);
-        } finally {
-            setIsLoading(false);
-        }
+        const loadPortfolio = async () => {
+            try {
+                // 1. Try Local Storage first for speed
+                const stored = localStorage.getItem('genfin_portfolio');
+                const storedGen = localStorage.getItem('genfin_generated_portfolio');
+                if (stored) setInvestments(JSON.parse(stored));
+                if (storedGen) setGeneratedPortfolio(JSON.parse(storedGen));
+
+                // 2. Sync with Backend
+                const token = localStorage.getItem('token');
+                if (token) {
+                    const res = await fetch('http://localhost:8000/portfolio/me', {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        // Map backend allocation to GeneratedPortfolio format
+                        const mappedPortfolio: GeneratedPortfolio = {
+                            strategyName: "AI Startup Strategy",
+                            description: "Auto-generated allocation based on capital requirements.",
+                            expectedReturn: "8-12%",
+                            riskScore: 7,
+                            totalAmount: data.monthly_investment,
+                            allocation: data.allocation.map((a: any) => ({
+                                symbol: a.asset.substring(0, 4).toUpperCase(),
+                                name: a.asset,
+                                percentage: a.percent,
+                                type: "Asset",
+                                reasoning: "Strategic Allocation"
+                            }))
+                        }
+                        setGeneratedPortfolio(mappedPortfolio);
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load portfolio', e);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadPortfolio();
     }, []);
 
     useEffect(() => {
@@ -85,7 +116,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <PortfolioContext.Provider value={{investments, addInvestment, removeInvestment, isLoading, generatedPortfolio, setGeneratedPortfolio}}>
+        <PortfolioContext.Provider value={{ investments, addInvestment, removeInvestment, isLoading, generatedPortfolio, setGeneratedPortfolio }}>
             {children}
         </PortfolioContext.Provider>
     );
