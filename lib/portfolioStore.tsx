@@ -58,7 +58,39 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
                 // 1. Try Local Storage first for speed
                 const stored = localStorage.getItem('genfin_portfolio');
                 const storedGen = localStorage.getItem('genfin_generated_portfolio');
-                if (stored) setInvestments(JSON.parse(stored));
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    // Deduplicate by id to prevent duplicate-key errors
+                    const seen = new Set<string>();
+                    const deduped = parsed.filter((i: InvestmentItem) => {
+                        if (seen.has(i.id)) return false;
+                        seen.add(i.id);
+                        return true;
+                    });
+                    setInvestments(deduped);
+
+                    // Validate startup IDs against DB to auto-remove deleted startups
+                    const token = localStorage.getItem('token');
+                    if (token && deduped.length > 0) {
+                        try {
+                            const ids = deduped.map((i: InvestmentItem) => i.id);
+                            const valRes = await fetch('http://localhost:8000/startups/validate-ids', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify(ids),
+                            });
+                            if (valRes.ok) {
+                                const { valid_ids } = await valRes.json();
+                                const validSet = new Set<string>(valid_ids);
+                                const cleaned = deduped.filter((i: InvestmentItem) => validSet.has(i.id));
+                                if (cleaned.length < deduped.length) {
+                                    console.log(`Portfolio auto-cleanup: removed ${deduped.length - cleaned.length} deleted startups`);
+                                    setInvestments(cleaned);
+                                }
+                            }
+                        } catch { /* validation optional, ignore errors */ }
+                    }
+                }
                 if (storedGen) setGeneratedPortfolio(JSON.parse(storedGen));
 
                 // 2. Sync with Backend
@@ -96,6 +128,19 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         loadPortfolio();
     }, []);
 
+    // Listen for startup deletions from other pages
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.id) {
+                console.log('Global startup delete triggered — removing from portfolio:', detail.id);
+                setInvestments(prev => prev.filter(i => i.id !== detail.id));
+            }
+        };
+        window.addEventListener('startupDeleted', handler);
+        return () => window.removeEventListener('startupDeleted', handler);
+    }, []);
+
     useEffect(() => {
         if (!isLoading) {
             localStorage.setItem('genfin_portfolio', JSON.stringify(investments));
@@ -108,10 +153,15 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     }, [investments, generatedPortfolio, isLoading]);
 
     const addInvestment = (item: InvestmentItem) => {
-        setInvestments((prev) => [...prev, item]);
+        setInvestments((prev) => {
+            // Prevent duplicates: skip if id already exists
+            if (prev.some(i => i.id === item.id)) return prev;
+            return [...prev, item];
+        });
     };
 
     const removeInvestment = (id: string) => {
+        console.log('Portfolio remove triggered — local only, startup still exists globally:', id);
         setInvestments((prev) => prev.filter((i) => i.id !== id));
     };
 

@@ -47,6 +47,10 @@ class UserData(Base):
 
     # Store user query/market text
     market_text = Column(String, nullable=True)
+
+    # Identity verification
+    gst_number = Column(String, nullable=True)      # For startup users (15 char alphanumeric)
+    aadhaar_number = Column(String, nullable=True)   # For job users (12 digit)
     
     owner = relationship("User", back_populates="data")
 

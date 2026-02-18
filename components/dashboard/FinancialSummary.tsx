@@ -6,6 +6,10 @@ interface Recommendations {
     recommended_investment: number;
     recommended_savings: number;
     emergency_fund_allocation: number;
+    confidence_score?: number;
+    invest_confidence?: number;
+    savings_confidence?: number;
+    emergency_confidence?: number;
     message: string;
 }
 
@@ -85,6 +89,11 @@ export default function FinancialSummary({ recommendations, loading, onUpdate }:
                     <div className="text-2xl font-bold text-white">
                         {formatCur(recommendations.recommended_investment)}
                     </div>
+                    {recommendations.invest_confidence != null && (
+                        <div className={`text-xs font-semibold mt-1 ${recommendations.invest_confidence >= 75 ? 'text-emerald-400' : recommendations.invest_confidence >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>
+                            Confidence: {recommendations.invest_confidence}%
+                        </div>
+                    )}
                 </div>
 
                 {/* Savings */}
@@ -98,6 +107,11 @@ export default function FinancialSummary({ recommendations, loading, onUpdate }:
                     <div className="text-2xl font-bold text-white">
                         {formatCur(recommendations.recommended_savings)}
                     </div>
+                    {recommendations.savings_confidence != null && (
+                        <div className={`text-xs font-semibold mt-1 ${recommendations.savings_confidence >= 75 ? 'text-emerald-400' : recommendations.savings_confidence >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>
+                            Confidence: {recommendations.savings_confidence}%
+                        </div>
+                    )}
                 </div>
 
                 {/* Emergency Fund */}
@@ -111,12 +125,30 @@ export default function FinancialSummary({ recommendations, loading, onUpdate }:
                     <div className="text-2xl font-bold text-white">
                         {formatCur(recommendations.emergency_fund_allocation)}
                     </div>
+                    {recommendations.emergency_confidence != null && (
+                        <div className={`text-xs font-semibold mt-1 ${recommendations.emergency_confidence >= 75 ? 'text-emerald-400' : recommendations.emergency_confidence >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>
+                            Confidence: {recommendations.emergency_confidence}%
+                        </div>
+                    )}
                 </div>
             </div>
 
             <div className="mt-6 pt-4 border-t border-gray-700/30 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="text-sm text-gray-500">
                     <span>Disposable Income: <strong>{formatCur(recommendations.monthly_disposable)}</strong></span>
+                    {recommendations.confidence_score != null && (
+                        <span className="ml-4">
+                            AI Confidence:{' '}
+                            <strong className={`${recommendations.confidence_score >= 75
+                                ? 'text-emerald-400'
+                                : recommendations.confidence_score >= 60
+                                    ? 'text-yellow-400'
+                                    : 'text-red-400'
+                                }`}>
+                                {recommendations.confidence_score}%
+                            </strong>
+                        </span>
+                    )}
                 </div>
 
                 <button

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Check, Plus, TrendingUp, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Check, Plus, TrendingUp, AlertTriangle, ShieldCheck, Trash2 } from 'lucide-react';
 import { InvestmentItem } from '@/lib/portfolioStore';
 import { getFundabilityRating } from '@/lib/fundability';
 
@@ -15,13 +15,15 @@ interface InvestmentCardProps {
     onAdd?: () => void;
     isAdded?: boolean;
     showAddButton?: boolean;
+    onRemove?: () => void;
 }
 
 export const InvestmentCard: React.FC<InvestmentCardProps> = ({
     data,
     onAdd,
     isAdded = false,
-    showAddButton = true
+    showAddButton = true,
+    onRemove
 }) => {
     const { label, color } = getFundabilityRating(data.fundabilityScore || 0);
     const { addToast } = useToast();
@@ -153,6 +155,16 @@ export const InvestmentCard: React.FC<InvestmentCardProps> = ({
                                 </>
                             )}
                         </Button>
+                    )}
+
+                    {onRemove && (
+                        <button
+                            onClick={onRemove}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-sm font-medium transition-colors"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Remove from Portfolio
+                        </button>
                     )}
                 </div>
             </Card>

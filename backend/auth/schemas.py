@@ -29,6 +29,9 @@ class UserDataSchema(BaseModel):
     runway_months: Optional[float] = None
     debt: Optional[float] = None
     other_assets: Optional[float] = None
+    # Identity verification
+    gst_number: Optional[str] = None
+    aadhaar_number: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -65,4 +68,7 @@ class UserProfileUpdate(BaseModel):
     investment_amount: Optional[float] = None
     ai_investment_amount: Optional[float] = None
     monthly_investment: Optional[float] = None
+    # Identity verification
+    gst_number: Optional[str] = None
+    aadhaar_number: Optional[str] = None
 

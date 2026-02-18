@@ -20,7 +20,7 @@ import { InvestmentCard } from '@/components/portfolio/InvestmentCard';
 import { Button } from '@/components/ui/Button';
 import { usePortfolio } from '@/lib/portfolioStore';
 import { calculateFundability } from '@/lib/fundability';
-import { Briefcase } from 'lucide-react';
+import { Briefcase, Trash2 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useToast } from '@/lib/toastStore';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
@@ -64,6 +64,15 @@ export default function Home() {
     const [adviceLoading, setAdviceLoading] = useState(false);
     const adviceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Financial form state (Step 3)
+    const [showFinancialForm, setShowFinancialForm] = useState(false);
+    const [finCapital, setFinCapital] = useState('');
+    const [finBudget, setFinBudget] = useState('');
+    const [finRunway, setFinRunway] = useState('');
+    const [finAskAmount, setFinAskAmount] = useState('');
+    const [finEquity, setFinEquity] = useState('');
+    const [creatingStartup, setCreatingStartup] = useState(false);
+
     // Investment State
     const { addInvestment } = usePortfolio();
     const [thesis, setThesis] = useState<any>(null);
@@ -74,6 +83,8 @@ export default function Home() {
     const { user } = useAuth();
     const [myStartups, setMyStartups] = useState<Startup[]>([]);
     const [myStartupsLoading, setMyStartupsLoading] = useState(true);
+    const [deleteTarget, setDeleteTarget] = useState<Startup | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const fetchMyStartups = useCallback(async () => {
         const token = localStorage.getItem('token');
@@ -205,12 +216,14 @@ export default function Home() {
     // ── Generate handler ──────────────────────────────────────────
     // ── Generate handler ──────────────────────────────────────────
     const handleGenerate = async (idea: string, title: string) => {
-        setStartupIdea(idea); // We can stick with idea for description/thesis gen context
-        // But for saving, we'll use 'title'
+        setStartupIdea(idea);
+        setStartupName(title);
 
         setLoading(true);
         setAdvice(null);
-        setSavedStartupId(null); // Clear previous ID
+        setSavedStartupId(null);
+        setShowFinancialForm(false);
+        setCreatingStartup(false);
         const resetStress = { ...defaultStressControls };
         const resetFounder = { ...defaultFounderControls };
         setStressControls(resetStress);
@@ -249,9 +262,9 @@ export default function Home() {
             const baseAdj = calculateStressTest(data, resetStress);
             fetchAdvice(idea, data, baseAdj, resetStress);
 
-            // Save to Backend immediately with the provided TITLE
-            console.log("Saving startup with title:", title);
-            saveStartupToBackend(data, title);
+            // Step 2 done — show financial form (Step 3)
+            console.log('Simulation finished — showing financial form');
+            setShowFinancialForm(true);
 
         } catch {
             const fallback: FinancialData = {
@@ -268,8 +281,56 @@ export default function Home() {
 
             const baseAdj = calculateStressTest(fallback, resetStress);
             fetchAdvice(idea, fallback, baseAdj, resetStress);
+            console.log('Simulation finished (fallback) — showing financial form');
+            setShowFinancialForm(true);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // ── Step 4: Final create after financial form ─────────────────
+    const handleFinalCreate = async () => {
+        if (!baseFinancialData || !startupName || creatingStartup) return;
+        console.log('Creating startup final — with financial details');
+        setCreatingStartup(true);
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            const res = await fetch('http://localhost:8000/startups/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    name: startupName,
+                    description: startupIdea || 'Generated via SimBuild',
+                    revenue: baseFinancialData.revenue,
+                    burn: baseFinancialData.burn,
+                    cash: parseFloat(finCapital) || baseFinancialData.cash,
+                    growth: baseFinancialData.growth,
+                    team: baseFinancialData.team,
+                    runway: parseInt(finRunway) || baseFinancialData.runway,
+                    survival_score: baseFinancialData.survivalScore,
+                }),
+            });
+
+            if (res.ok) {
+                const savedStartup = await res.json();
+                console.log('Startup created with ID:', savedStartup.id);
+                setSavedStartupId(savedStartup.id);
+                setShowFinancialForm(false);
+                fetchMyStartups();
+                addToast('Startup created successfully!', 'success');
+            } else {
+                const err = await res.json().catch(() => null);
+                addToast(err?.detail || 'Failed to create startup', 'error');
+            }
+        } catch (e) {
+            console.error('Failed to create startup', e);
+            addToast('Network error creating startup', 'error');
+        } finally {
+            setCreatingStartup(false);
         }
     };
 
@@ -394,14 +455,12 @@ export default function Home() {
     };
 
     const handleTrackExisting = (startup: Startup) => {
-        // Quick check to see if already added (optional)
-        // For now, just add it.
         addInvestment({
             id: startup.id,
             startupName: startup.name,
             ticker: startup.name.substring(0, 4).toUpperCase(),
-            valuation: 1000000, // Default valuation for existing items without full thesis
-            askAmount: 100000,  // Default ask
+            valuation: 1000000,
+            askAmount: 100000,
             equity: 10,
             shares: 1000,
             costBasis: 0,
@@ -414,8 +473,73 @@ export default function Home() {
         addToast(`Added "${startup.name}" to Portfolio`, "success");
     };
 
+    const handleDeleteStartup = async () => {
+        if (!deleteTarget || deleting) return;
+        console.log('Global startup delete triggered:', deleteTarget.id, deleteTarget.name);
+        setDeleting(true);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`http://localhost:8000/startups/${deleteTarget.id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => null);
+                throw new Error(err?.detail || 'Delete failed');
+            }
+            setMyStartups(prev => prev.filter(s => s.id !== deleteTarget.id));
+
+            // Clean deleted startup from localStorage portfolio so job-user portfolio updates
+            try {
+                const stored = localStorage.getItem('genfin_portfolio');
+                if (stored) {
+                    const items = JSON.parse(stored);
+                    const cleaned = items.filter((i: any) => i.id !== deleteTarget.id);
+                    localStorage.setItem('genfin_portfolio', JSON.stringify(cleaned));
+                }
+            } catch { /* ignore parse errors */ }
+
+            // Dispatch event so any open portfolio page refetches
+            window.dispatchEvent(new CustomEvent('startupDeleted', { detail: { id: deleteTarget.id } }));
+
+            addToast('Startup deleted successfully', 'success');
+        } catch (e: any) {
+            addToast(e.message || 'Unable to delete startup', 'error');
+        } finally {
+            setDeleting(false);
+            setDeleteTarget(null);
+        }
+    };
+
     return (
         <ProtectedRoute>
+            {/* Delete Confirmation Modal */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+                        <h3 className="text-xl font-bold text-white mb-2">Delete this startup?</h3>
+                        <p className="text-gray-400 text-sm mb-6">
+                            This will permanently remove <span className="text-white font-medium">&ldquo;{deleteTarget.name}&rdquo;</span>, investor requests, and portfolio tracking. This action cannot be undone.
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setDeleteTarget(null)}
+                                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteStartup}
+                                disabled={deleting}
+                                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                {deleting ? 'Deleting...' : 'Yes, Delete'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <main className="min-h-screen bg-gray-900 text-white py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-7xl mx-auto">
                     <Header />
@@ -467,15 +591,24 @@ export default function Home() {
                                             </div>
                                         </div>
 
-                                        <Button
-                                            size="sm"
-                                            variant="secondary"
-                                            className="w-full mt-4"
-                                            onClick={() => handleTrackExisting(startup)}
-                                        >
-                                            <Briefcase className="w-4 h-4 mr-2" />
-                                            Track in Portfolio
-                                        </Button>
+                                        <div className="flex gap-2 mt-4">
+                                            <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                className="flex-1"
+                                                onClick={() => handleTrackExisting(startup)}
+                                            >
+                                                <Briefcase className="w-4 h-4 mr-2" />
+                                                Track in Portfolio
+                                            </Button>
+                                            <button
+                                                onClick={() => setDeleteTarget(startup)}
+                                                className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors text-sm font-medium flex items-center gap-1.5"
+                                                title="Delete startup"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -488,6 +621,87 @@ export default function Home() {
                             <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
                             <p className="text-gray-300 mt-4 text-base font-medium">Generating financial model...</p>
                             <p className="text-gray-500 mt-1 text-sm">Analyzing market conditions</p>
+                        </div>
+                    )}
+
+                    {/* ═══ STEP 3: FINANCIAL DETAILS FORM ═══ */}
+                    {!loading && showFinancialForm && !savedStartupId && (
+                        <div className="mb-12 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="bg-gradient-to-br from-gray-800/80 to-gray-900 border border-blue-500/30 rounded-2xl p-8 shadow-2xl">
+                                <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+                                    <Briefcase className="w-6 h-6 text-blue-400" />
+                                    Financial Details
+                                </h2>
+                                <p className="text-gray-400 text-sm mb-6">Complete the financial details to create your startup.</p>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Starting Capital ($)</label>
+                                        <input
+                                            type="number"
+                                            value={finCapital}
+                                            onChange={(e) => setFinCapital(e.target.value)}
+                                            placeholder={`e.g. ${baseFinancialData?.cash || 500000}`}
+                                            min="0"
+                                            className="w-full bg-gray-800/60 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Annual Budget ($)</label>
+                                        <input
+                                            type="number"
+                                            value={finBudget}
+                                            onChange={(e) => setFinBudget(e.target.value)}
+                                            placeholder="e.g. 600000"
+                                            min="0"
+                                            className="w-full bg-gray-800/60 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Runway (months)</label>
+                                        <input
+                                            type="number"
+                                            value={finRunway}
+                                            onChange={(e) => setFinRunway(e.target.value)}
+                                            placeholder={`e.g. ${baseFinancialData?.runway || 12}`}
+                                            min="0"
+                                            className="w-full bg-gray-800/60 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Ask Amount ($)</label>
+                                        <input
+                                            type="number"
+                                            value={finAskAmount}
+                                            onChange={(e) => setFinAskAmount(e.target.value)}
+                                            placeholder="e.g. 250000"
+                                            min="0"
+                                            className="w-full bg-gray-800/60 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Equity Offered (%)</label>
+                                        <input
+                                            type="number"
+                                            value={finEquity}
+                                            onChange={(e) => setFinEquity(e.target.value)}
+                                            placeholder="e.g. 15"
+                                            min="0"
+                                            max="100"
+                                            className="w-full bg-gray-800/60 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                                        />
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleFinalCreate}
+                                    disabled={creatingStartup}
+                                    className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-600/20 text-lg"
+                                >
+                                    <Briefcase className="w-5 h-5" />
+                                    {creatingStartup ? 'Creating Startup...' : 'Create Startup'}
+                                </button>
+                            </div>
                         </div>
                     )}
 

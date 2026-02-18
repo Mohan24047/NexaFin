@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'next/navigation'
 import { saveProfile } from '@/lib/getUserProfile'
-import { Briefcase, User, ArrowRight, ArrowLeft, Loader2, CheckCircle, DollarSign, Users, BarChart3, FileText, TrendingUp } from 'lucide-react'
+import { Briefcase, User, ArrowRight, ArrowLeft, Loader2, CheckCircle, DollarSign, Users, BarChart3, FileText, TrendingUp, Shield } from 'lucide-react'
 
 type UserType = 'job' | 'startup' | null
 type Step = 'choose' | 'form' | 'saving'
@@ -31,6 +31,10 @@ export default function OnboardingPage() {
     const [employeeCount, setEmployeeCount] = useState('')
     const [annualBudget, setAnnualBudget] = useState('')
     const [marketDescription, setMarketDescription] = useState('')
+    const [gstNumber, setGstNumber] = useState('')
+
+    // Job identity
+    const [aadhaarNumber, setAadhaarNumber] = useState('')
 
     // If already has profile AND user_type, redirect to dashboard
     React.useEffect(() => {
@@ -56,6 +60,21 @@ export default function OnboardingPage() {
         if (!user || !userType) return
 
         setError(null)
+
+        // Client-side validation for GST / Aadhaar
+        if (userType === 'startup') {
+            if (!gstNumber || !/^[0-9A-Z]{15}$/.test(gstNumber)) {
+                setError('GST Number must be exactly 15 alphanumeric characters (uppercase).')
+                return
+            }
+        }
+        if (userType === 'job') {
+            if (!aadhaarNumber || !/^\d{12}$/.test(aadhaarNumber)) {
+                setError('Aadhaar Number must be exactly 12 digits.')
+                return
+            }
+        }
+
         setSaving(true)
         setStep('saving')
 
@@ -81,6 +100,7 @@ export default function OnboardingPage() {
                     employee_count: null,
                     annual_budget: null,
                     market_description: null,
+                    aadhaar_number: aadhaarNumber,
                 }
                 : {
                     id: user.id,
@@ -95,6 +115,7 @@ export default function OnboardingPage() {
                     employee_count: parseInt(employeeCount) || 0,
                     annual_budget: parseFloat(annualBudget) || 0,
                     market_description: marketDescription || null,
+                    gst_number: gstNumber,
                 }
 
             const { error: saveError } = await saveProfile(profileData)
@@ -312,6 +333,22 @@ export default function OnboardingPage() {
                                             </select>
                                         </div>
                                     </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                                            <Shield className="w-3.5 h-3.5 inline mr-1" />
+                                            Aadhaar Number
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={aadhaarNumber}
+                                            onChange={(e) => setAadhaarNumber(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                                            placeholder="12-digit Aadhaar number"
+                                            required
+                                            maxLength={12}
+                                            className="w-full bg-gray-800/60 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all font-mono tracking-wider"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">Your 12-digit UIDAI Aadhaar number</p>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -372,6 +409,22 @@ export default function OnboardingPage() {
                                             rows={3}
                                             className="w-full bg-gray-800/60 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all resize-none"
                                         />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                                            <Shield className="w-3.5 h-3.5 inline mr-1" />
+                                            GST Number
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={gstNumber}
+                                            onChange={(e) => setGstNumber(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15))}
+                                            placeholder="22AAAAA0000A1Z5"
+                                            required
+                                            maxLength={15}
+                                            className="w-full bg-gray-800/60 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all font-mono tracking-wider"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">15-character GST Identification Number</p>
                                     </div>
                                 </div>
                             )}

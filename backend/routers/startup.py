@@ -79,3 +79,63 @@ def get_my_startups(
     ).order_by(models.Startup.created_at.desc()).all()
     
     return startups
+
+@router.post("/validate-ids")
+def validate_startup_ids(
+    ids: List[str],
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(utils.get_current_user)
+):
+    """Return which startup IDs still exist in the database."""
+    existing = db.query(models.Startup.id).filter(
+        models.Startup.id.in_(ids)
+    ).all()
+    valid_ids = {row[0] for row in existing}
+    return {"valid_ids": list(valid_ids)}
+
+@router.delete("/{startup_id}")
+def delete_startup(
+    startup_id: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(utils.get_current_user)
+):
+    startup = db.query(models.Startup).filter(models.Startup.id == startup_id).first()
+    if not startup:
+        raise HTTPException(status_code=404, detail="Startup not found")
+
+    if startup.creator_email != current_user.email:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this startup")
+
+    startup_name = startup.name  # capture before delete
+
+    try:
+        # Cascade: investment requests
+        db.query(models.InvestmentRequest).filter(
+            models.InvestmentRequest.startup_id == startup_id
+        ).delete(synchronize_session=False)
+
+        # Cascade: notifications mentioning this startup
+        db.query(models.Notification).filter(
+            models.Notification.message.contains(startup_name)
+        ).delete(synchronize_session=False)
+
+        # Delete the startup itself
+        db.delete(startup)
+        db.flush()
+
+        # Verification: ensure no orphan investment requests remain
+        orphans = db.query(models.InvestmentRequest).filter(
+            models.InvestmentRequest.startup_id == startup_id
+        ).count()
+        if orphans > 0:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Cascade delete verification failed")
+
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+
+    return {"success": True, "message": "Startup deleted", "deleted_id": startup_id}

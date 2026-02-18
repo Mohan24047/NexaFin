@@ -20,6 +20,9 @@ export interface UserProfile {
     runway_months: number | null
     debt: number | null
     other_assets: number | null
+    // Identity verification
+    gst_number: string | null
+    aadhaar_number: string | null
     created_at: string
 }
 
@@ -58,6 +61,8 @@ export async function fetchProfile(token: string): Promise<UserProfile | null> {
             runway_months: data.data?.runway_months ?? null,
             debt: data.data?.debt ?? null,
             other_assets: data.data?.other_assets ?? null,
+            gst_number: data.data?.gst_number ?? null,
+            aadhaar_number: data.data?.aadhaar_number ?? null,
         };
 
         return flatProfile;

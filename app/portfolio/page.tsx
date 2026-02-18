@@ -17,7 +17,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 export default function PortfolioPage() {
     const { user } = useAuth();
-    const { investments, isLoading, generatedPortfolio, setGeneratedPortfolio } = usePortfolio();
+    const { investments, removeInvestment, isLoading, generatedPortfolio, setGeneratedPortfolio } = usePortfolio();
     const [isGenerating, setIsGenerating] = useState(false);
 
     if (user?.user_type === 'startup') {
@@ -44,16 +44,17 @@ export default function PortfolioPage() {
                         totalAmount: data.monthly_investment,
                         riskScore: 5, // Default or derive from risk tolerance
                         expectedReturn: "7-10%", // Placeholder
-                        allocation: data.allocation.map((a: any) => ({
+                        allocation: data.allocation.map((a: any, idx: number) => ({
                             name: a.asset,
                             percentage: a.percent,
                             amount: a.amount,
-                            symbol: a.asset.split(' ')[0] || "ETF", // Best guess symbol
-                            type: "ETF", // Default
-                            reasoning: "AI Optimized for Risk Profile",
+                            symbol: a.symbol || `${a.asset.replace(/\s+/g, '').slice(0, 4).toUpperCase()}${idx}`,
+                            type: a.type || "ETF",
+                            reasoning: a.reasoning || "AI Optimized for Risk Profile",
                             color: a.color
                         }))
                     };
+                    console.log('[Portfolio] Loaded allocation symbols:', portfolioData.allocation.map((a: any) => a.symbol));
 
                     setGeneratedPortfolio(portfolioData as any);
                 }
@@ -346,6 +347,7 @@ export default function PortfolioPage() {
                                     key={item.id}
                                     data={item}
                                     showAddButton={false}
+                                    onRemove={() => removeInvestment(item.id)}
                                 />
                             ))}
                         </div>

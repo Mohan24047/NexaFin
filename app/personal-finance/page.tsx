@@ -6,7 +6,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import {
     DollarSign, CreditCard, Wallet, TrendingUp,
     PiggyBank, ArrowUpRight, ArrowDownRight, Briefcase,
-    Pencil, Save, X, Clock, AlertTriangle, Landmark
+    Pencil, Save, X, Clock, AlertTriangle, Landmark, Shield
 } from 'lucide-react';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/context/AuthContext';
@@ -317,6 +317,19 @@ export default function PersonalFinancePage() {
                             </Card>
                         ))}
                     </div>
+
+                    {/* Identity: GST Number */}
+                    {profile?.gst_number && (
+                        <Card className="hover:bg-gray-900/80 transition-colors">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="p-2 bg-emerald-500/10 rounded-lg">
+                                    <Shield className="w-6 h-6 text-emerald-400" />
+                                </div>
+                                <p className="text-gray-400 text-sm">GST Number</p>
+                            </div>
+                            <h3 className="text-xl font-bold text-white font-mono tracking-wider">{profile.gst_number}</h3>
+                        </Card>
+                    )}
                 </div>
             </ProtectedRoute>
         );
@@ -492,6 +505,22 @@ export default function PersonalFinancePage() {
                         </Card>
                     ))}
                 </div>
+
+                {/* Identity: Aadhaar Number (masked) */}
+                {profile?.aadhaar_number && (
+                    <Card className="hover:bg-gray-900/80 transition-colors">
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-blue-500/10 rounded-lg">
+                                <Shield className="w-6 h-6 text-blue-400" />
+                            </div>
+                            <p className="text-gray-400 text-sm">Aadhaar Number</p>
+                        </div>
+                        <h3 className="text-xl font-bold text-white font-mono tracking-wider">
+                            XXXX XXXX {profile.aadhaar_number.slice(-4)}
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-1">Masked for security</p>
+                    </Card>
+                )}
             </div>
         </ProtectedRoute>
     );

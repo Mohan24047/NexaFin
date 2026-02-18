@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
+import re
 from ..db import database, models
 from ..auth import schemas, utils
 from ..services import portfolio_engine, recommendation_engine
@@ -79,8 +80,17 @@ def update_profile(
     user_data = current_user.data
     print(f"DEBUG: Input profile_data: {profile_data.dict(exclude_unset=True)}")
     print(f"DEBUG: Before update - Budget: {user_data.budget}, Revenue: {user_data.revenue}")
+
+    # Validate GST and Aadhaar before updating
+    update_dict = profile_data.dict(exclude_unset=True)
+    if 'gst_number' in update_dict and update_dict['gst_number']:
+        if not re.match(r'^[0-9A-Z]{15}$', update_dict['gst_number']):
+            raise HTTPException(status_code=400, detail="Invalid GST Number. Must be exactly 15 alphanumeric characters (uppercase).")
+    if 'aadhaar_number' in update_dict and update_dict['aadhaar_number']:
+        if not re.match(r'^\d{12}$', update_dict['aadhaar_number']):
+            raise HTTPException(status_code=400, detail="Invalid Aadhaar Number. Must be exactly 12 digits.")
     
-    for key, value in profile_data.dict(exclude_unset=True).items():
+    for key, value in update_dict.items():
         if key == 'market_description':
              user_data.market_text = value
         elif key == 'monthly_income':
